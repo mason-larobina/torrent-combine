@@ -20,10 +20,9 @@ This Rust application is designed to merge partially downloaded torrent files wi
 
 ## Assumptions
 
-- Files with the same name and size have identical contents (no need to verify byte-by-byte for grouping).
+- Files with the same name and size should have identical contents
 - Files are pre-allocated with zeros; partial downloads have correct data in downloaded chunks and zeros elsewhere.
 - Targeting video files, but no specific video format checks beyond size filter.
-- The application runs on a filesystem that supports large files and binary operations.
 - Subdirectories are recursed to find files across the directory tree.
 - Files with the same basename and size are candidates for grouping; during merging, non-zero contents are checked for consistency.
 
@@ -78,6 +77,7 @@ This Rust application is designed to merge partially downloaded torrent files wi
   - Use `std::fs` and `std::io` for file operations.
   - Implement recursive directory traversal using `std::fs::read_dir`.
   - For efficiency with large files: Read/write in buffered chunks (e.g., 4KB buffers).
+  - Use `clap` and the struct derive for CLI argument handling.
 - **Error Handling**: Use `Result` types, log to stderr.
 - **Testing**: Unit tests for sanity check and OR logic; integration tests with sample files.
 - **Extensions**: Later add progress reporting or handling of more complex scenarios.
