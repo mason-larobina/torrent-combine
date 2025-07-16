@@ -24,7 +24,8 @@ This Rust application is designed to merge partially downloaded torrent files wi
 - Files are pre-allocated with zeros; partial downloads have correct data in downloaded chunks and zeros elsewhere.
 - Targeting video files, but no specific video format checks beyond size filter.
 - The application runs on a filesystem that supports large files and binary operations.
-- No subdirectories are recursed; only files directly in the root directory are considered (for simplicity, as per the request).
+- Subdirectories are recursed to find files across the directory tree.
+- Files with the same basename and size are candidates for grouping; during merging, non-zero contents are checked for consistency.
 
 ## Functionality
 
@@ -33,50 +34,53 @@ This Rust application is designed to merge partially downloaded torrent files wi
    - Example: `cargo run -- /path/to/root/dir`
 
 2. **File Discovery**:
-   - Scan the root directory for all files.
+   - Recursively scan the root directory and all subdirectories for files.
    - Filter files where size > 1MB.
 
 3. **Grouping Files**:
-   - Create a map or groups of files based on (filename, filesize) as the key.
-   - Only groups with exactly two files will be considered for merging (extendable if needed).
+   - Create a map or groups of files based on (basename, filesize) as the key.
+   - Groups with at least two files will be considered for merging.
 
 4. **Sanity Check**:
-   - For each pair of files in a group:
-     - Open both files in binary mode.
-     - Read byte-by-byte (or in chunks for efficiency).
+   - For each group with >=2 files:
+     - Open all files in binary mode.
+     - Read byte-by-byte (or in chunks for efficiency) across all files.
      - For each position:
-       - If both bytes == 0, valid.
-       - If one == 0 and the other != 0, valid.
-       - If both != 0 and equal, valid.
-       - Otherwise, invalid pair; skip and log.
-   - If the entire pair passes, proceed to merge.
+       - Collect non-zero bytes from all files.
+       - If there are non-zero bytes, they must all be equal.
+       - If conflicting non-zero values, invalid group; skip and log.
+   - If the entire group passes, proceed to merge.
 
 5. **Merging**:
-   - Create a new file with the same name but `.merged` suffix.
-   - For each byte position, write the bitwise OR of the two bytes.
-   - After merging, compare the merged file's contents with each original:
-     - If identical to one, delete the merged file.
+   - Compute the merged contents by performing a bitwise OR on the file contents across all files in the group.
+   - For each original file in the group:
+     - Create a new file next to it with the same basename but `.merged` suffix.
+     - Write the merged contents to this file.
+     - After writing, compare the merged file's contents with the original file.
+     - If identical, delete the merged file.
    - Note: Since files can be large, perform comparisons and operations in a memory-efficient way (e.g., streaming).
 
 6. **Edge Cases**:
    - Single file in a group: Skip, no merge needed.
-   - More than two files: For simplicity, handle pairs or extend to multi-file OR.
+   - More than two files: Handled by generalizing the sanity check and OR operation across all.
    - Files smaller than 1MB: Ignore.
-   - Identical files: Merged result same as original; don't persist.
+   - Identical files: Merged result same as original; don't persist .merged.
    - Mismatch in size (though grouped by size): Error.
    - I/O errors: Handle gracefully, log, and continue.
+   - Files in different directories with same basename: Each gets its own .merged in its directory, if different from original.
 
 ## Implementation Plan
 
 - **Language**: Rust (using standard library for file I/O, no external crates initially for simplicity).
 - **Structure**:
-  - `main.rs`: CLI parsing, directory scanning, grouping, and orchestration.
+  - `main.rs`: CLI parsing, recursive directory scanning, grouping, and orchestration.
   - `merger.rs`: Functions for sanity check and merging.
   - Use `std::fs` and `std::io` for file operations.
+  - Implement recursive directory traversal using `std::fs::read_dir`.
   - For efficiency with large files: Read/write in buffered chunks (e.g., 4KB buffers).
 - **Error Handling**: Use `Result` types, log to stderr.
 - **Testing**: Unit tests for sanity check and OR logic; integration tests with sample files.
-- **Extensions**: Later add recursion into subdirectories, multi-file merging, or progress reporting.
+- **Extensions**: Later add progress reporting or handling of more complex scenarios.
 
 ## Potential Challenges
 
