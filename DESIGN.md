@@ -17,6 +17,7 @@ This Rust application is designed to merge partially downloaded torrent files wi
 - Output: Save the merged file with a `.merged` suffix in the same directory.
 - Optimization: Do not create or persist the merged file if it is identical to one of the input files.
 - Error Handling: Skip invalid pairs, log errors, and continue processing.
+- Mode: Optional --replace to replace incomplete original files with merged content instead of creating .merged files.
 
 ## Assumptions
 
@@ -30,7 +31,9 @@ This Rust application is designed to merge partially downloaded torrent files wi
 
 1. **Command-Line Interface**:
    - Accept a single argument: the root directory path.
+   - Optional --replace flag.
    - Example: `cargo run -- /path/to/root/dir`
+   - Example with replace: `cargo run -- /path/to/root/dir --replace`
 
 2. **File Discovery**:
    - Recursively scan the root directory and all subdirectories for files.
@@ -52,12 +55,13 @@ This Rust application is designed to merge partially downloaded torrent files wi
 
 5. **Merging**:
    - Compute the merged contents by performing a bitwise OR on the file contents across all files in the group.
-   - For each original file in the group:
-     - Create a new file next to it with the same basename but `.merged` suffix.
-     - Write the merged contents to this file.
-     - After writing, compare the merged file's contents with the original file.
-     - If identical, delete the merged file.
-   - Note: Since files can be large, perform comparisons and operations in a memory-efficient way (e.g., streaming).
+   - For each incomplete original file in the group (i.e., that differs from the merged):
+     - If --replace mode is enabled:
+       - Replace the original file with the merged contents (using a temporary file and rename for safety).
+     - Else:
+       - Create a new file next to it with the same basename but `.merged` suffix containing the merged contents.
+   - Note: Completeness is determined during the merge process by checking if each file's contents match the merged result.
+   - Files can be large, so operations are streaming.
 
 6. **Edge Cases**:
    - Single file in a group: Skip, no merge needed.
@@ -77,7 +81,7 @@ This Rust application is designed to merge partially downloaded torrent files wi
   - Use `std::fs` and `std::io` for file operations.
   - Implement recursive directory traversal using `std::fs::read_dir`.
   - For efficiency with large files: Read/write in buffered chunks (e.g., 4KB buffers).
-  - Use `clap` and the struct derive for CLI argument handling.
+  - Use `clap` with derive for CLI, including the --replace flag.
 - **Error Handling**: Use `Result` types, log to stderr.
 - **Testing**: Unit tests for sanity check and OR logic; integration tests with sample files.
 - **Extensions**: Later add progress reporting or handling of more complex scenarios.

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use log::error;
 use tempfile::NamedTempFile;
 
-pub fn process_group(paths: &[PathBuf], basename: &str) -> io::Result<()> {
+pub fn process_group(paths: &[PathBuf], basename: &str, replace: bool) -> io::Result<()> {
     log::debug!("Processing paths for group {}: {:?}", basename, paths);
 
     let res = check_sanity_and_completes(paths)?;
@@ -13,7 +13,8 @@ pub fn process_group(paths: &[PathBuf], basename: &str) -> io::Result<()> {
     if let Some((temp, is_complete)) = res {
         log::info!("Sanity check passed for group {}", basename);
 
-        if is_complete.iter().any(|&c| !c) {
+        let any_incomplete = is_complete.iter().any(|&c| !c);
+        if any_incomplete {
             for (j, &complete) in is_complete.iter().enumerate() {
                 if !complete {
                     let path = &paths[j];
@@ -21,18 +22,31 @@ pub fn process_group(paths: &[PathBuf], basename: &str) -> io::Result<()> {
                         io::ErrorKind::InvalidInput,
                         "No parent directory",
                     ))?;
-                    let file_name = path.file_name().unwrap().to_string_lossy().into_owned();
-                    let merged_path = parent.join(format!("{}.merged", file_name));
                     let local_temp = NamedTempFile::new_in(parent)?;
                     fs::copy(temp.path(), local_temp.path())?;
-                    local_temp.persist(&merged_path)?;
-                    log::debug!("Created merged file {:?} for incomplete original {:?}", merged_path, path);
+                    if replace {
+                        fs::rename(local_temp.path(), path)?;
+                        log::debug!("Replaced original {:?} with merged content", path);
+                    } else {
+                        let file_name = path.file_name().unwrap().to_string_lossy().into_owned();
+                        let merged_path = parent.join(format!("{}.merged", file_name));
+                        local_temp.persist(&merged_path)?;
+                        log::debug!("Created merged file {:?} for incomplete original {:?}", merged_path, path);
+                    }
                 }
             }
         } else {
-            log::debug!("All files in group {} are complete, no merged files created", basename);
+            log::debug!(
+                "All files in group {} are complete, no {} needed",
+                basename,
+                if replace { "replacements" } else { "merged files created" }
+            );
         }
-        log::info!("Completed merge for group {}", basename);
+        log::info!(
+            "Completed {} for group {}",
+            if replace { "replacement" } else { "merge" },
+            basename
+        );
     } else {
         error!("Failed sanity check for group: {}", basename);
     }
@@ -288,6 +302,35 @@ mod tests {
         assert!(!merged1.exists());
 
         let merged2 = dir.path().join("b.merged");
+        assert!(!merged2.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn test_process_group_replace_for_incomplete() -> io::Result<()> {
+        let dir = tempdir()?;
+        let sub1 = dir.path().join("sub1");
+        fs::create_dir(&sub1)?;
+        let file1 = sub1.join("video.mkv");
+        let data_incomplete = vec![0u8, 0, 0];
+        fs::write(&file1, &data_incomplete)?;
+
+        let sub2 = dir.path().join("sub2");
+        fs::create_dir(&sub2)?;
+        let file2 = sub2.join("video.mkv");
+        let data_complete = vec![4u8, 5, 6];
+        fs::write(&file2, &data_complete)?;
+
+        let paths = vec![file1.clone(), file2.clone()];
+        process_group(&paths, "video.mkv", true)?;
+
+        assert_eq!(fs::read(&file1)?, data_complete);
+        assert_eq!(fs::read(&file2)?, data_complete);
+
+        let merged1 = sub1.join("video.mkv.merged");
+        assert!(!merged1.exists());
+
+        let merged2 = sub2.join("video.mkv.merged");
         assert!(!merged2.exists());
         Ok(())
     }

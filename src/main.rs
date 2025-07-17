@@ -13,6 +13,8 @@ mod merger;
 #[command(name = "torrent-combine")]
 struct Args {
     root_dir: PathBuf,
+    #[arg(long)]
+    replace: bool,
 }
 
 fn collect_large_files(dir: &PathBuf) -> io::Result<Vec<PathBuf>> {
@@ -58,7 +60,7 @@ fn main() -> io::Result<()> {
     groups.into_par_iter().for_each(|((basename, _), paths)| {
         if paths.len() >= 2 {
             log::info!("Processing group {} with {} files", basename, paths.len());
-            if let Err(e) = merger::process_group(&paths, &basename) {
+            if let Err(e) = merger::process_group(&paths, &basename, args.replace) {
                 error!("Error processing group {}: {:?}", basename, e);
             }
         }
