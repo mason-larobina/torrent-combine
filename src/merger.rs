@@ -36,10 +36,11 @@ fn check_sanity_and_completes(paths: &[PathBuf]) -> io::Result<Option<Vec<bool>>
         }
     }
 
-    let mut readers: Vec<BufReader<File>> = paths
-        .iter()
-        .map(|p| BufReader::new(File::open(p)?))
-        .collect();
+    let mut readers: Vec<BufReader<File>> = Vec::with_capacity(paths.len());
+
+    for p in paths {
+        readers.push(BufReader::new(File::open(p)?));
+    }
 
     const BUF_SIZE: usize = 8192;
 
@@ -89,17 +90,18 @@ fn merge(paths: &[PathBuf], is_complete: &[bool]) -> io::Result<()> {
 
     let size = fs::metadata(&paths[0])?.len();
 
-    let mut readers: Vec<BufReader<File>> = paths
-        .iter()
-        .map(|p| BufReader::new(File::open(p)?))
-        .collect();
+    let mut readers: Vec<BufReader<File>> = Vec::with_capacity(paths.len());
 
-    const BUF_SIZE: u64 = 8192;
+    for p in paths {
+        readers.push(BufReader::new(File::open(p)?));
+    }
+
+    const BUF_SIZE: usize = 8192;
 
     let mut buffers: Vec<Vec<u8>> = vec![vec![]; paths.len()];
 
-    for offset in (0..size).step_by(BUF_SIZE as usize) {
-        let chunk_size = ((size - offset) as usize).min(BUF_SIZE as usize);
+    for offset in (0..size).step_by(BUF_SIZE) {
+        let chunk_size = ((size - offset) as usize).min(BUF_SIZE);
 
         for (i, reader) in readers.iter_mut().enumerate() {
             let mut buf = vec![0; chunk_size];
@@ -125,18 +127,15 @@ fn merge(paths: &[PathBuf], is_complete: &[bool]) -> io::Result<()> {
     for (j, &complete) in is_complete.iter().enumerate() {
         if !complete {
             let path = &paths[j];
-            let parent = match path.parent() {
-                Some(p) => p,
-                None => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "No parent directory",
-                    ))
-                }
-            };
-            let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+            let parent = path.parent().ok_or(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "No parent directory",
+            ))?;
+            let file_name = path.file_name().unwrap().to_string_lossy().into_owned();
             let merged_path = parent.join(format!("{}.merged", file_name));
-            fs::copy(temp.path(), &merged_path)?;
+            let local_temp = NamedTempFile::new_in(parent)?;
+            fs::copy(temp.path(), local_temp.path())?;
+            local_temp.persist(&merged_path)?;
         }
     }
 

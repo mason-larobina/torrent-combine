@@ -48,7 +48,7 @@ fn main() -> io::Result<()> {
         }
     }
 
-    for ((basename, size), paths) in groups {
+    for ((basename, _), paths) in groups {
         if paths.len() >= 2 {
             if let Err(e) = merger::process_group(&paths, &basename) {
                 eprintln!("Error processing group {}: {:?}", basename, e);
