@@ -150,7 +150,7 @@ fn check_sanity_and_completes(paths: &[PathBuf]) -> io::Result<Option<(NamedTemp
 mod tests {
     use super::*;
     use std::fs;
-    use std::io::self;
+    use std::io;
     use tempfile::tempdir;
 
     #[test]
