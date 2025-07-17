@@ -9,19 +9,17 @@ This Rust application is designed to merge partially downloaded torrent files wi
 - Input: A single root directory containing torrent files (potentially partial, pre-allocated with zeros).
 - Filter: Process only files larger than 1MB (targeting video files).
 - Grouping: Group files by identical filename and filesize (assuming identical contents if names and sizes match).
-- Sanity Check: For each byte position in paired files:
-  - Both bytes are zero, or
-  - One is zero and the other is non-zero, or
-  - Both are non-zero but equal.
-- Merge Operation: If sanity check passes, perform a bitwise OR on the file contents to create a merged file.
+- Sanity Check: For each byte position across all files in the group:
+  - Collect non-zero bytes; if any, they must all be equal (zeros are allowed anywhere).
+- Merge Operation: If sanity check passes, perform a bitwise OR on the file contents across all files in the group to create merged content.
 - Output: Save the merged file with a `.merged` suffix in the same directory.
 - Optimization: Do not create or persist the merged file if it is identical to one of the input files.
-- Error Handling: Skip invalid pairs, log errors, and continue processing.
+- Error Handling: Skip invalid groups, log errors, and continue processing.
 - Mode: Optional --replace to replace incomplete original files with merged content instead of creating .merged files.
 
 ## Assumptions
 
-- Files with the same name and size should have identical contents
+- Files with the same name and size are expected to be compatible partial versions (zeros in undownloaded chunks), with non-zero bytes matching where present.
 - Files are pre-allocated with zeros; partial downloads have correct data in downloaded chunks and zeros elsewhere.
 - Targeting video files, but no specific video format checks beyond size filter.
 - Subdirectories are recursed to find files across the directory tree.
@@ -51,15 +49,18 @@ This Rust application is designed to merge partially downloaded torrent files wi
        - Collect non-zero bytes from all files.
        - If there are non-zero bytes, they must all be equal.
        - If conflicting non-zero values, invalid group; skip and log.
+   - Extends to groups of >2 files by checking consistency across all bytes at each position.
    - If the entire group passes, proceed to merge.
 
 5. **Merging**:
    - Compute the merged contents by performing a bitwise OR on the file contents across all files in the group.
+   - Extends to groups of >2 files by OR-ing all bytes at each position.
    - For each incomplete original file in the group (i.e., that differs from the merged):
      - If --replace mode is enabled:
        - Replace the original file with the merged contents (using a temporary file and rename for safety).
      - Else:
        - Create a new file next to it with the same basename but `.merged` suffix containing the merged contents.
+   - For groups with files in different subdirectories, create/replace merged outputs per incomplete file's location (e.g., multiple `.merged` files if needed). This may involve copying merged content across directories for efficiency.
    - Note: Completeness is determined during the merge process by checking if each file's contents match the merged result.
    - Files can be large, so operations are streaming.
 

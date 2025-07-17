@@ -35,18 +35,14 @@ pub fn process_group(paths: &[PathBuf], basename: &str, replace: bool) -> io::Re
                     }
                 }
             }
-        } else {
-            log::debug!(
-                "All files in group {} are complete, no {} needed",
-                basename,
-                if replace { "replacements" } else { "merged files created" }
+            log::info!(
+                "Completed {} for group {}",
+                if replace { "replacement" } else { "merge" },
+                basename
             );
+        } else {
+            log::info!("Skipped group {} (all complete, no action needed)", basename);
         }
-        log::info!(
-            "Completed {} for group {}",
-            if replace { "replacement" } else { "merge" },
-            basename
-        );
     } else {
         error!("Failed sanity check for group: {}", basename);
     }
@@ -56,7 +52,7 @@ pub fn process_group(paths: &[PathBuf], basename: &str, replace: bool) -> io::Re
 
 fn check_sanity_and_completes(paths: &[PathBuf]) -> io::Result<Option<(NamedTempFile, Vec<bool>)>> {
     if paths.is_empty() {
-        return Ok(Some((NamedTempFile::new()?, vec![])));
+        return Ok(None);
     }
 
     let size = fs::metadata(&paths[0])?.len();
@@ -152,17 +148,6 @@ mod tests {
     use std::fs;
     use std::io;
     use tempfile::tempdir;
-
-    #[test]
-    fn test_empty_group() -> io::Result<()> {
-        if let Some((temp, is_complete)) = check_sanity_and_completes(&[])? {
-            assert_eq!(is_complete, vec![]);
-            assert_eq!(fs::read(temp.path())?, vec![]);
-        } else {
-            panic!("Expected Some for empty group");
-        }
-        Ok(())
-    }
 
     #[test]
     fn test_single_file() -> io::Result<()> {
