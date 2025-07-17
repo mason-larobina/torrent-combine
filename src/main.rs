@@ -4,6 +4,8 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
+mod merger;
+
 #[derive(Parser, Debug)]
 #[command(name = "torrent-combine")]
 struct Args {
@@ -48,9 +50,8 @@ fn main() -> io::Result<()> {
 
     for ((basename, size), paths) in groups {
         if paths.len() >= 2 {
-            println!("Group ({} bytes): {}", size, basename);
-            for path in paths {
-                println!("  - {:?}", path);
+            if let Err(e) = merger::process_group(&paths, &basename) {
+                eprintln!("Error processing group {}: {:?}", basename, e);
             }
         }
     }
