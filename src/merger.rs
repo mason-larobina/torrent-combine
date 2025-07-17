@@ -49,7 +49,8 @@ fn check_sanity_and_completes(paths: &[PathBuf]) -> io::Result<Option<(NamedTemp
     }
 
     let temp = NamedTempFile::new()?;
-    let mut writer = BufWriter::new(temp.as_file());
+    let file = temp.reopen()?;
+    let mut writer = BufWriter::new(file);
 
     let mut readers: Vec<BufReader<File>> = Vec::with_capacity(paths.len());
 
