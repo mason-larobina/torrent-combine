@@ -59,7 +59,11 @@ fn check_sanity_and_completes(paths: &[PathBuf]) -> io::Result<Option<(NamedTemp
 
     log::debug!("Checking sanity for {} files of size {}", paths.len(), size);
 
-    let temp = NamedTempFile::new()?;
+    let temp_dir = paths[0].parent().ok_or(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "No parent directory for first path",
+    ))?;
+    let temp = NamedTempFile::new_in(temp_dir)?;
     let file = temp.reopen()?;
     let mut writer = BufWriter::new(file);
 
