@@ -31,7 +31,11 @@ pub fn process_group(paths: &[PathBuf], basename: &str, replace: bool) -> io::Re
                         let file_name = path.file_name().unwrap().to_string_lossy().into_owned();
                         let merged_path = parent.join(format!("{}.merged", file_name));
                         local_temp.persist(&merged_path)?;
-                        log::debug!("Created merged file {:?} for incomplete original {:?}", merged_path, path);
+                        log::debug!(
+                            "Created merged file {:?} for incomplete original {:?}",
+                            merged_path,
+                            path
+                        );
                     }
                 }
             }
@@ -41,7 +45,10 @@ pub fn process_group(paths: &[PathBuf], basename: &str, replace: bool) -> io::Re
                 basename
             );
         } else {
-            log::info!("Skipped group {} (all complete, no action needed)", basename);
+            log::info!(
+                "Skipped group {} (all complete, no action needed)",
+                basename
+            );
         }
     } else {
         error!("Failed sanity check for group: {}", basename);
@@ -320,4 +327,3 @@ mod tests {
         Ok(())
     }
 }
-

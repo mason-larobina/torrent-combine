@@ -55,7 +55,10 @@ fn main() -> io::Result<()> {
         if let Some(basename) = file.file_name().map(|s| s.to_string_lossy().to_string()) {
             if let Ok(metadata) = fs::metadata(&file) {
                 let size = metadata.len();
-                groups.entry((basename, size)).or_insert(Vec::new()).push(file);
+                groups
+                    .entry((basename, size))
+                    .or_insert(Vec::new())
+                    .push(file);
             }
         }
     }
