@@ -39,6 +39,9 @@ fn collect_large_files(dir: &PathBuf) -> io::Result<Vec<PathBuf>> {
 }
 
 fn main() -> io::Result<()> {
+    if std::env::var("RUST_LOG").is_err() {
+        unsafe { std::env::set_var("RUST_LOG", "info") };
+    }
     env_logger::init();
 
     let args = Args::parse();
