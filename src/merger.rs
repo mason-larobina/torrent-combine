@@ -107,3 +107,164 @@ fn check_sanity_and_completes(paths: &[PathBuf]) -> io::Result<Option<(NamedTemp
     Ok(Some((temp, is_complete)))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::io::{self, Read, Write};
+    use tempfile::{tempdir, NamedTempFile};
+
+    #[test]
+    fn test_empty_group() -> io::Result<()> {
+        if let Some((temp, is_complete)) = check_sanity_and_completes(&[])? {
+            assert_eq!(is_complete, vec![]);
+            assert_eq!(fs::read(temp.path())?, vec![]);
+        } else {
+            panic!("Expected Some for empty group");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_single_file() -> io::Result<()> {
+        let dir = tempdir()?;
+        let p1 = dir.path().join("a");
+        let data = vec![1u8, 2, 3];
+        fs::write(&p1, &data)?;
+
+        let paths = vec![p1];
+
+        if let Some((temp, is_complete)) = check_sanity_and_completes(&paths)? {
+            assert_eq!(is_complete, vec![true]);
+            assert_eq!(fs::read(temp.path())?, data);
+        } else {
+            panic!("Expected Some for single file");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_size_mismatch() -> io::Result<()> {
+        let dir = tempdir()?;
+        let p1 = dir.path().join("a");
+        fs::write(&p1, vec![1u8, 2, 3])?;
+
+        let p2 = dir.path().join("b");
+        fs::write(&p2, vec![4u8, 5])?;
+
+        let paths = vec![p1, p2];
+        let res = check_sanity_and_completes(&paths);
+        assert!(res.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_sanity_fail() -> io::Result<()> {
+        let dir = tempdir()?;
+        let p1 = dir.path().join("a");
+        fs::write(&p1, vec![1u8, 0])?;
+
+        let p2 = dir.path().join("b");
+        fs::write(&p2, vec![2u8, 0])?;
+
+        let paths = vec![p1, p2];
+        let res = check_sanity_and_completes(&paths)?;
+        assert!(res.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn test_compatible_merge_multiple() -> io::Result<()> {
+        let dir = tempdir()?;
+        let p1 = dir.path().join("a");
+        let data1 = vec![1u8, 0, 0];
+        fs::write(&p1, &data1)?;
+
+        let p2 = dir.path().join("b");
+        let data2 = vec![0u8, 1, 0];
+        fs::write(&p2, &data2)?;
+
+        let p3 = dir.path().join("c");
+        let data3 = vec![1u8, 1, 0];
+        fs::write(&p3, &data3)?;
+
+        let paths = vec![p1, p2, p3];
+
+        if let Some((temp, is_complete)) = check_sanity_and_completes(&paths)? {
+            assert_eq!(is_complete, vec![false, false, true]);
+            assert_eq!(fs::read(temp.path())?, vec![1u8, 1, 0]);
+        } else {
+            panic!("Expected Some for compatible merge");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_process_group_creates_merged_for_incomplete() -> io::Result<()> {
+        let dir = tempdir()?;
+        let sub1 = dir.path().join("sub1");
+        fs::create_dir(&sub1)?;
+        let file1 = sub1.join("video.mkv");
+        let data_incomplete = vec![0u8, 0, 0];
+        fs::write(&file1, &data_incomplete)?;
+
+        let sub2 = dir.path().join("sub2");
+        fs::create_dir(&sub2)?;
+        let file2 = sub2.join("video.mkv");
+        let data_complete = vec![4u8, 5, 6];
+        fs::write(&file2, &data_complete)?;
+
+        let paths = vec![file1.clone(), file2.clone()];
+        process_group(&paths, "video.mkv")?;
+
+        let merged1 = sub1.join("video.mkv.merged");
+        assert!(merged1.exists());
+        assert_eq!(fs::read(&merged1)?, data_complete);
+
+        let merged2 = sub2.join("video.mkv.merged");
+        assert!(!merged2.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn test_process_group_no_merged_on_conflict() -> io::Result<()> {
+        let dir = tempdir()?;
+        let p1 = dir.path().join("a");
+        fs::write(&p1, vec![1u8, 0])?;
+
+        let p2 = dir.path().join("b");
+        fs::write(&p2, vec![2u8, 0])?;
+
+        let paths = vec![p1.clone(), p2.clone()];
+        process_group(&paths, "dummy")?;
+
+        let merged1 = dir.path().join("a.merged");
+        assert!(!merged1.exists());
+
+        let merged2 = dir.path().join("b.merged");
+        assert!(!merged2.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn test_process_group_no_merged_all_complete() -> io::Result<()> {
+        let dir = tempdir()?;
+        let p1 = dir.path().join("a");
+        let data = vec![4u8, 5, 6];
+        fs::write(&p1, &data)?;
+
+        let p2 = dir.path().join("b");
+        fs::write(&p2, &data)?;
+
+        let paths = vec![p1.clone(), p2.clone()];
+        process_group(&paths, "dummy")?;
+
+        let merged1 = dir.path().join("a.merged");
+        assert!(!merged1.exists());
+
+        let merged2 = dir.path().join("b.merged");
+        assert!(!merged2.exists());
+        Ok(())
+    }
+}
+
