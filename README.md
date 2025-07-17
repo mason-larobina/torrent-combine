@@ -16,64 +16,53 @@ For details, see [DESIGN.md](DESIGN.md).
 
 ## Installation
 
-Requires Rust and Cargo (install via [rustup](https://rustup.rs/)).
+Both require Rust and Cargo (install via [rustup](https://rustup.rs/)).
 
-Clone the repository:
+### Via cargo install
 
 ```bash
-git clone <repo-url>
+cargo install torrent-combine
+```
+
+### From source
+
+```bash
+git clone https://github.com/mason-larobina/torrent-combine
 cd torrent-combine
+cargo install --path=.
 ```
-
-Build the project:
-
-```bash
-cargo build --release
-```
-
-The binary will be in `target/release/torrent-combine`.
 
 ## Usage
 
 Run the tool with a root directory path:
 
 ```bash
-cargo run -- /path/to/root/dir
-```
-
-Or with the built binary:
-
-```bash
-./target/release/torrent-combine /path/to/root/dir
+torrent-combine /path/to/torrent/root/dir
 ```
 
 ### Options
 
 - `--replace`: Replace incomplete original files with merged content instead of creating `.merged` files.
 
-Enable debug logging:
-
-```bash
-RUST_LOG=debug cargo run -- /path/to/root/dir
-```
-
 ## Examples
 
-Assume two partial files `/downloads/video.mkv` (size 10MB, partial) and `/other/video.mkv` (size 10MB, more complete):
+Assume two partial files `/downloads/torrent-a/video.mkv` (size 10MB, partial) and `/downloads/torrent-b/video.mkv` (size 10MB, more complete):
 
 ```bash
-cargo run -- /downloads
+torrent-combine /downloads
 ```
 
-This creates `/downloads/video.mkv.merged` if the original is incomplete.
+This creates `/downloads/torrent-a/video.mkv.merged` if the `torrent-a/video.mkv` was able to fill in missing chunks from `torrent-b/video.mkv`.
 
-With replace:
+Likewise the `/downloads/torrent-b/video.mkv.merged` file is created if the `torrent-b/video.mkv` file was able to fill in missing chunks from `torrent-a/video.mkv`.
+
+To merge the files in-place use the replace flag:
 
 ```bash
-cargo run -- /downloads --replace
+torrent-combine /downloads --replace
 ```
 
-This overwrites the incomplete `/downloads/video.mkv` with the merged content.
+This overwrites the incomplete `/downloads/torrent-a/video.mkv` and or `/downloads/torrent-b/video.mkv` with the merged content if applicable.
 
 ## Contributing
 
@@ -81,4 +70,4 @@ Fork the repo, make changes, and submit a pull request. See [CONVENTIONS.md](CON
 
 ## License
 
-MIT License (or specify your license).
+MIT License.
