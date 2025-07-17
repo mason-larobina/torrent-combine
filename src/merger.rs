@@ -150,8 +150,8 @@ fn check_sanity_and_completes(paths: &[PathBuf]) -> io::Result<Option<(NamedTemp
 mod tests {
     use super::*;
     use std::fs;
-    use std::io::{self, Read, Write};
-    use tempfile::{tempdir, NamedTempFile};
+    use std::io::self;
+    use tempfile::tempdir;
 
     #[test]
     fn test_empty_group() -> io::Result<()> {
@@ -254,7 +254,7 @@ mod tests {
         fs::write(&file2, &data_complete)?;
 
         let paths = vec![file1.clone(), file2.clone()];
-        process_group(&paths, "video.mkv")?;
+        process_group(&paths, "video.mkv", false)?;
 
         let merged1 = sub1.join("video.mkv.merged");
         assert!(merged1.exists());
@@ -275,7 +275,7 @@ mod tests {
         fs::write(&p2, vec![2u8, 0])?;
 
         let paths = vec![p1.clone(), p2.clone()];
-        process_group(&paths, "dummy")?;
+        process_group(&paths, "dummy", false)?;
 
         let merged1 = dir.path().join("a.merged");
         assert!(!merged1.exists());
@@ -296,7 +296,7 @@ mod tests {
         fs::write(&p2, &data)?;
 
         let paths = vec![p1.clone(), p2.clone()];
-        process_group(&paths, "dummy")?;
+        process_group(&paths, "dummy", false)?;
 
         let merged1 = dir.path().join("a.merged");
         assert!(!merged1.exists());
