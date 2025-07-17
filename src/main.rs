@@ -15,6 +15,8 @@ struct Args {
     root_dir: PathBuf,
     #[arg(long)]
     replace: bool,
+    #[arg(long)]
+    num_threads: Option<usize>,
 }
 
 fn collect_large_files(dir: &PathBuf) -> io::Result<Vec<PathBuf>> {
@@ -46,6 +48,10 @@ fn main() -> io::Result<()> {
 
     let args = Args::parse();
     log::info!("Processing root directory: {:?}", args.root_dir);
+
+    if let Some(num_threads) = args.num_threads {
+        rayon::ThreadPoolBuilder::new().num_threads(num_threads).build_global().unwrap();
+    }
 
     let files = collect_large_files(&args.root_dir)?;
     log::info!("Found {} large files", files.len());
