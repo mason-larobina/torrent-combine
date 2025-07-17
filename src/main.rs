@@ -4,6 +4,9 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
+use log::error;
+use rayon::prelude::*;
+
 mod merger;
 
 #[derive(Parser, Debug)]
@@ -34,6 +37,8 @@ fn collect_large_files(dir: &PathBuf) -> io::Result<Vec<PathBuf>> {
 }
 
 fn main() -> io::Result<()> {
+    env_logger::init();
+
     let args = Args::parse();
 
     let files = collect_large_files(&args.root_dir)?;
@@ -48,13 +53,13 @@ fn main() -> io::Result<()> {
         }
     }
 
-    for ((basename, _), paths) in groups {
+    groups.into_par_iter().for_each(|((basename, _), paths)| {
         if paths.len() >= 2 {
             if let Err(e) = merger::process_group(&paths, &basename) {
-                eprintln!("Error processing group {}: {:?}", basename, e);
+                error!("Error processing group {}: {:?}", basename, e);
             }
         }
-    }
+    });
 
     Ok(())
 }
