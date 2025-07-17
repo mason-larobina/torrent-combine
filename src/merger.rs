@@ -6,9 +6,13 @@ use log::error;
 use tempfile::NamedTempFile;
 
 pub fn process_group(paths: &[PathBuf], basename: &str) -> io::Result<()> {
+    log::debug!("Processing paths for group {}: {:?}", basename, paths);
+
     let res = check_sanity_and_completes(paths)?;
 
     if let Some((temp, is_complete)) = res {
+        log::info!("Sanity check passed for group {}", basename);
+
         if is_complete.iter().any(|&c| !c) {
             for (j, &complete) in is_complete.iter().enumerate() {
                 if !complete {
@@ -22,9 +26,13 @@ pub fn process_group(paths: &[PathBuf], basename: &str) -> io::Result<()> {
                     let local_temp = NamedTempFile::new_in(parent)?;
                     fs::copy(temp.path(), local_temp.path())?;
                     local_temp.persist(&merged_path)?;
+                    log::debug!("Created merged file {:?} for incomplete original {:?}", merged_path, path);
                 }
             }
+        } else {
+            log::debug!("All files in group {} are complete, no merged files created", basename);
         }
+        log::info!("Completed merge for group {}", basename);
     } else {
         error!("Failed sanity check for group: {}", basename);
     }
@@ -41,12 +49,15 @@ fn check_sanity_and_completes(paths: &[PathBuf]) -> io::Result<Option<(NamedTemp
 
     for p in &paths[1..] {
         if fs::metadata(p)?.len() != size {
+            log::error!("Size mismatch in group for path {:?}", p);
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Size mismatch in group",
             ));
         }
     }
+
+    log::debug!("Checking sanity for {} files of size {}", paths.len(), size);
 
     let temp = NamedTempFile::new()?;
     let file = temp.reopen()?;
@@ -64,6 +75,7 @@ fn check_sanity_and_completes(paths: &[PathBuf]) -> io::Result<Option<(NamedTemp
 
     let mut is_complete = vec![true; paths.len()];
 
+    let mut processed = 0u64;
     for offset in (0..size).step_by(BUF_SIZE) {
         let chunk_size = ((size - offset) as usize).min(BUF_SIZE);
 
@@ -100,6 +112,15 @@ fn check_sanity_and_completes(paths: &[PathBuf]) -> io::Result<Option<(NamedTemp
         }
 
         writer.write_all(&or_chunk)?;
+
+        processed += chunk_size as u64;
+        if processed % (BUF_SIZE as u64 * 100) == 0 {
+            log::debug!("Processed {} of {} bytes for group", processed, size);
+        }
+    }
+
+    if processed % (BUF_SIZE as u64 * 100) != 0 {
+        log::debug!("Processed {} of {} bytes for group", processed, size);
     }
 
     writer.flush()?;

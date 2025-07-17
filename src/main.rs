@@ -40,8 +40,10 @@ fn main() -> io::Result<()> {
     env_logger::init();
 
     let args = Args::parse();
+    log::info!("Processing root directory: {:?}", args.root_dir);
 
     let files = collect_large_files(&args.root_dir)?;
+    log::info!("Found {} large files", files.len());
 
     let mut groups: HashMap<(String, u64), Vec<PathBuf>> = HashMap::new();
     for file in files {
@@ -55,11 +57,13 @@ fn main() -> io::Result<()> {
 
     groups.into_par_iter().for_each(|((basename, _), paths)| {
         if paths.len() >= 2 {
+            log::info!("Processing group {} with {} files", basename, paths.len());
             if let Err(e) = merger::process_group(&paths, &basename) {
                 error!("Error processing group {}: {:?}", basename, e);
             }
         }
     });
 
+    log::info!("Processing completed");
     Ok(())
 }
