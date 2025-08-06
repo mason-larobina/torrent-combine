@@ -57,12 +57,30 @@ pub fn process_group(paths: &[PathBuf], basename: &str, replace: bool) -> io::Re
     Ok(())
 }
 
+fn check_word_sanity(w: u64, or_w: u64) -> bool {
+    if w == or_w {
+        return true;
+    }
+    for k in 0..8 {
+        let shift = k * 8;
+        let b = (w >> shift) as u8;
+        let or_b = (or_w >> shift) as u8;
+        if b != 0 && b != or_b {
+            return false;
+        }
+    }
+    true
+}
+
 fn check_sanity_and_completes(paths: &[PathBuf]) -> io::Result<Option<(NamedTempFile, Vec<bool>)>> {
     if paths.is_empty() {
         return Ok(None);
     }
 
     let size = fs::metadata(&paths[0])?.len();
+    if size == 0 {
+        return Ok(None);
+    }
 
     for p in &paths[1..] {
         if fs::metadata(p)?.len() != size {
@@ -85,67 +103,74 @@ fn check_sanity_and_completes(paths: &[PathBuf]) -> io::Result<Option<(NamedTemp
     let mut writer = BufWriter::new(file);
 
     let mut readers: Vec<BufReader<File>> = Vec::with_capacity(paths.len());
-
     for p in paths {
         readers.push(BufReader::new(File::open(p)?));
     }
 
     const BUF_SIZE: usize = 8192;
-
-    let mut buffers: Vec<Vec<u8>> = vec![vec![]; paths.len()];
-
+    let mut buffers: Vec<Vec<u8>> = (0..paths.len()).map(|_| vec![0; BUF_SIZE]).collect();
     let mut is_complete = vec![true; paths.len()];
+    let mut or_chunk = vec![0; BUF_SIZE];
 
     let mut processed = 0u64;
-    for offset in (0..size).step_by(BUF_SIZE) {
-        let chunk_size = ((size - offset) as usize).min(BUF_SIZE);
+    while processed < size {
+        let chunk_size = ((size - processed) as usize).min(BUF_SIZE);
+        let buffers_slice = &mut buffers;
+        let or_chunk_slice = &mut or_chunk[..chunk_size];
 
         for (i, reader) in readers.iter_mut().enumerate() {
-            let mut buf = vec![0; chunk_size];
-            reader.read_exact(&mut buf)?;
-            buffers[i] = buf;
+            reader.read_exact(&mut buffers_slice[i][..chunk_size])?;
         }
 
-        let mut or_chunk = vec![0u8; chunk_size];
-        for pos in 0..chunk_size {
-            let mut or_byte = 0u8;
-            let mut non_zero_val: Option<u8> = None;
+        or_chunk_slice.copy_from_slice(&buffers_slice[0][..chunk_size]);
 
-            for i in 0..paths.len() {
-                let b = buffers[i][pos];
-                or_byte |= b;
-                if b != 0 {
-                    match non_zero_val {
-                        None => non_zero_val = Some(b),
-                        Some(v) if v != b => return Ok(None),
-                        _ => {}
-                    }
-                }
+        let or_chunk_ptr = or_chunk_slice.as_ptr();
+        let (prefix, words, suffix) = unsafe { or_chunk_slice.align_to_mut::<u64>() };
+
+        for b in prefix.iter_mut() {
+            let offset = (b as *const u8 as usize) - (or_chunk_ptr as usize);
+            for i in 1..paths.len() {
+                *b |= buffers_slice[i][offset];
             }
-
-            or_chunk[pos] = or_byte;
-
-            for i in 0..paths.len() {
-                if buffers[i][pos] != or_byte {
-                    is_complete[i] = false;
-                }
+        }
+        for (j, w) in words.iter_mut().enumerate() {
+            for i in 1..paths.len() {
+                let (_, other_words, _) = unsafe { buffers_slice[i][..chunk_size].align_to::<u64>() };
+                *w |= other_words[j];
+            }
+        }
+        for b in suffix.iter_mut() {
+            let offset = (b as *const u8 as usize) - (or_chunk_ptr as usize);
+            for i in 1..paths.len() {
+                *b |= buffers_slice[i][offset];
             }
         }
 
-        writer.write_all(&or_chunk)?;
+        for i in 0..paths.len() {
+            let buffer_slice = &buffers_slice[i][..chunk_size];
+            if buffer_slice != or_chunk_slice {
+                is_complete[i] = false;
+                let (prefix, words, suffix) = unsafe { buffer_slice.align_to::<u64>() };
+                let (or_prefix, or_words, or_suffix) = unsafe { or_chunk_slice.align_to::<u64>() };
 
+                if !prefix.iter().zip(or_prefix.iter()).all(|(b, or_b)| *b == 0 || *b == *or_b) {
+                    return Ok(None);
+                }
+                if !words.iter().zip(or_words.iter()).all(|(w, or_w)| check_word_sanity(*w, *or_w)) {
+                    return Ok(None);
+                }
+                if !suffix.iter().zip(or_suffix.iter()).all(|(b, or_b)| *b == 0 || *b == *or_b) {
+                    return Ok(None);
+                }
+            }
+        }
+
+        writer.write_all(or_chunk_slice)?;
         processed += chunk_size as u64;
-        if processed % (BUF_SIZE as u64 * 100) == 0 {
-            log::debug!("Processed {} of {} bytes for group", processed, size);
-        }
     }
 
-    if processed % (BUF_SIZE as u64 * 100) != 0 {
-        log::debug!("Processed {} of {} bytes for group", processed, size);
-    }
-
+    log::debug!("Processed {} of {} bytes for group", processed, size);
     writer.flush()?;
-
     Ok(Some((temp, is_complete)))
 }
 
