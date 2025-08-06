@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use log::error;
 use rayon::prelude::*;
@@ -69,15 +71,86 @@ fn main() -> io::Result<()> {
         }
     }
 
-    groups.into_par_iter().for_each(|((basename, _), paths)| {
-        if paths.len() >= 2 {
-            log::info!("Processing group {} with {} files", basename, paths.len());
-            if let Err(e) = merger::process_group(&paths, &basename, args.replace) {
-                error!("Error processing group {}: {:?}", basename, e);
-            }
-        }
-    });
+    let groups_to_process: Vec<_> = groups
+        .into_iter()
+        .filter(|(_, paths)| paths.len() >= 2)
+        .collect();
+    let total_groups = groups_to_process.len();
+    log::info!("Found {} groups to process", total_groups);
 
-    log::info!("Processing completed");
+    let groups_processed = Arc::new(AtomicUsize::new(0));
+    let merged_groups_count = Arc::new(AtomicUsize::new(0));
+    let skipped_groups_count = Arc::new(AtomicUsize::new(0));
+
+    groups_to_process
+        .into_par_iter()
+        .for_each(|((basename, _), paths)| {
+            let groups_processed_cloned = Arc::clone(&groups_processed);
+            let merged_groups_count_cloned = Arc::clone(&merged_groups_count);
+            let skipped_groups_count_cloned = Arc::clone(&skipped_groups_count);
+
+            match merger::process_group(&paths, &basename, args.replace) {
+                Ok(stats) => {
+                    let processed_count =
+                        groups_processed_cloned.fetch_add(1, Ordering::SeqCst) + 1;
+                    let percentage_complete = (processed_count as f64 / total_groups as f64) * 100.0;
+
+                    match stats.status {
+                        merger::GroupStatus::Merged => {
+                            merged_groups_count_cloned.fetch_add(1, Ordering::SeqCst);
+                            let mb_per_sec = (stats.bytes_processed as f64 / 1_048_576.0)
+                                / stats.processing_time.as_secs_f64();
+                            log::info!(
+                                "[{}/{}] Group '{}' merged at {:.2} MB/s. {:.1}% complete.",
+                                processed_count,
+                                total_groups,
+                                basename,
+                                mb_per_sec,
+                                percentage_complete
+                            );
+                            if !stats.merged_files.is_empty() {
+                                for file in stats.merged_files {
+                                    log::info!("  -> Created merged file: {}", file.display());
+                                }
+                            }
+                        }
+                        merger::GroupStatus::Skipped => {
+                            skipped_groups_count_cloned.fetch_add(1, Ordering::SeqCst);
+                            log::info!(
+                                "[{}/{}] Group '{}' skipped (all files complete). {:.1}% complete.",
+                                processed_count,
+                                total_groups,
+                                basename,
+                                percentage_complete
+                            );
+                        }
+                        merger::GroupStatus::Failed => {
+                            log::warn!(
+                                "[{}/{}] Group '{}' failed sanity check. {:.1}% complete.",
+                                processed_count,
+                                total_groups,
+                                basename,
+                                percentage_complete
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Error processing group {}: {:?}", basename, e);
+                }
+            }
+        });
+
+    let final_processed = groups_processed.load(Ordering::SeqCst);
+    let final_merged = merged_groups_count.load(Ordering::SeqCst);
+    let final_skipped = skipped_groups_count.load(Ordering::SeqCst);
+
+    log::info!("--------------------");
+    log::info!("Processing Summary:");
+    log::info!("Total groups: {}", total_groups);
+    log::info!("  - Processed: {}", final_processed);
+    log::info!("  - Merged: {}", final_merged);
+    log::info!("  - Skipped: {}", final_skipped);
+    log::info!("--------------------");
     Ok(())
 }
