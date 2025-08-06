@@ -1,12 +1,44 @@
 use std::fs::{self, File};
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use log::error;
 use tempfile::NamedTempFile;
 
-pub fn process_group(paths: &[PathBuf], basename: &str, replace: bool) -> io::Result<()> {
+#[derive(Debug)]
+pub enum GroupStatus {
+    Merged,
+    Skipped,
+    Failed,
+}
+
+#[derive(Debug)]
+pub struct GroupStats {
+    pub status: GroupStatus,
+    pub processing_time: Duration,
+    pub bytes_processed: u64,
+    pub merged_files: Vec<PathBuf>,
+}
+
+pub fn process_group(paths: &[PathBuf], basename: &str, replace: bool) -> io::Result<GroupStats> {
+    let start_time = Instant::now();
     log::debug!("Processing paths for group {}: {:?}", basename, paths);
+
+    let bytes_processed = if !paths.is_empty() {
+        fs::metadata(&paths[0])?.len()
+    } else {
+        0
+    };
+
+    if bytes_processed == 0 {
+        return Ok(GroupStats {
+            status: GroupStatus::Skipped,
+            processing_time: start_time.elapsed(),
+            bytes_processed,
+            merged_files: Vec::new(),
+        });
+    }
 
     let res = check_sanity_and_completes(paths)?;
 
@@ -15,6 +47,7 @@ pub fn process_group(paths: &[PathBuf], basename: &str, replace: bool) -> io::Re
 
         let any_incomplete = is_complete.iter().any(|&c| !c);
         if any_incomplete {
+            let mut merged_files = Vec::new();
             for (j, &complete) in is_complete.iter().enumerate() {
                 if !complete {
                     let path = &paths[j];
@@ -36,6 +69,7 @@ pub fn process_group(paths: &[PathBuf], basename: &str, replace: bool) -> io::Re
                             merged_path,
                             path
                         );
+                        merged_files.push(merged_path);
                     }
                 }
             }
@@ -44,17 +78,33 @@ pub fn process_group(paths: &[PathBuf], basename: &str, replace: bool) -> io::Re
                 if replace { "replacement" } else { "merge" },
                 basename
             );
+            Ok(GroupStats {
+                status: GroupStatus::Merged,
+                processing_time: start_time.elapsed(),
+                bytes_processed,
+                merged_files,
+            })
         } else {
             log::info!(
                 "Skipped group {} (all complete, no action needed)",
                 basename
             );
+            Ok(GroupStats {
+                status: GroupStatus::Skipped,
+                processing_time: start_time.elapsed(),
+                bytes_processed,
+                merged_files: Vec::new(),
+            })
         }
     } else {
         error!("Failed sanity check for group: {}", basename);
+        Ok(GroupStats {
+            status: GroupStatus::Failed,
+            processing_time: start_time.elapsed(),
+            bytes_processed,
+            merged_files: Vec::new(),
+        })
     }
-
-    Ok(())
 }
 
 fn check_word_sanity(w: u64, or_w: u64) -> bool {
@@ -271,7 +321,10 @@ mod tests {
         fs::write(&file2, &data_complete)?;
 
         let paths = vec![file1.clone(), file2.clone()];
-        process_group(&paths, "video.mkv", false)?;
+        let stats = process_group(&paths, "video.mkv", false)?;
+
+        assert!(matches!(stats.status, GroupStatus::Merged));
+        assert_eq!(stats.merged_files.len(), 1);
 
         let merged1 = sub1.join("video.mkv.merged");
         assert!(merged1.exists());
@@ -292,7 +345,9 @@ mod tests {
         fs::write(&p2, vec![2u8, 0])?;
 
         let paths = vec![p1.clone(), p2.clone()];
-        process_group(&paths, "dummy", false)?;
+        let stats = process_group(&paths, "dummy", false)?;
+
+        assert!(matches!(stats.status, GroupStatus::Failed));
 
         let merged1 = dir.path().join("a.merged");
         assert!(!merged1.exists());
@@ -313,7 +368,9 @@ mod tests {
         fs::write(&p2, &data)?;
 
         let paths = vec![p1.clone(), p2.clone()];
-        process_group(&paths, "dummy", false)?;
+        let stats = process_group(&paths, "dummy", false)?;
+
+        assert!(matches!(stats.status, GroupStatus::Skipped));
 
         let merged1 = dir.path().join("a.merged");
         assert!(!merged1.exists());
@@ -339,7 +396,9 @@ mod tests {
         fs::write(&file2, &data_complete)?;
 
         let paths = vec![file1.clone(), file2.clone()];
-        process_group(&paths, "video.mkv", true)?;
+        let stats = process_group(&paths, "video.mkv", true)?;
+
+        assert!(matches!(stats.status, GroupStatus::Merged));
 
         assert_eq!(fs::read(&file1)?, data_complete);
         assert_eq!(fs::read(&file2)?, data_complete);
