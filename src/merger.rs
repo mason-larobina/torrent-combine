@@ -107,7 +107,7 @@ fn check_sanity_and_completes(paths: &[PathBuf]) -> io::Result<Option<(NamedTemp
         readers.push(BufReader::new(File::open(p)?));
     }
 
-    const BUF_SIZE: usize = 8192;
+    const BUF_SIZE: usize = 1<<20;
     let mut buffers: Vec<Vec<u8>> = (0..paths.len()).map(|_| vec![0; BUF_SIZE]).collect();
     let mut is_complete = vec![true; paths.len()];
     let mut or_chunk = vec![0; BUF_SIZE];
