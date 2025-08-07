@@ -157,7 +157,7 @@ fn check_sanity_and_completes(paths: &[PathBuf]) -> io::Result<Option<(NamedTemp
         readers.push(BufReader::new(File::open(p)?));
     }
 
-    const BUF_SIZE: usize = 1<<20;
+    const BUF_SIZE: usize = 1 << 20;
     let mut buffers: Vec<Vec<u8>> = (0..paths.len()).map(|_| vec![0; BUF_SIZE]).collect();
     let mut is_complete = vec![true; paths.len()];
     let mut or_chunk = vec![0; BUF_SIZE];
@@ -185,7 +185,8 @@ fn check_sanity_and_completes(paths: &[PathBuf]) -> io::Result<Option<(NamedTemp
         }
         for (j, w) in words.iter_mut().enumerate() {
             for i in 1..paths.len() {
-                let (_, other_words, _) = unsafe { buffers_slice[i][..chunk_size].align_to::<u64>() };
+                let (_, other_words, _) =
+                    unsafe { buffers_slice[i][..chunk_size].align_to::<u64>() };
                 *w |= other_words[j];
             }
         }
@@ -203,13 +204,25 @@ fn check_sanity_and_completes(paths: &[PathBuf]) -> io::Result<Option<(NamedTemp
                 let (prefix, words, suffix) = unsafe { buffer_slice.align_to::<u64>() };
                 let (or_prefix, or_words, or_suffix) = unsafe { or_chunk_slice.align_to::<u64>() };
 
-                if !prefix.iter().zip(or_prefix.iter()).all(|(b, or_b)| *b == 0 || *b == *or_b) {
+                if !prefix
+                    .iter()
+                    .zip(or_prefix.iter())
+                    .all(|(b, or_b)| *b == 0 || *b == *or_b)
+                {
                     return Ok(None);
                 }
-                if !words.iter().zip(or_words.iter()).all(|(w, or_w)| check_word_sanity(*w, *or_w)) {
+                if !words
+                    .iter()
+                    .zip(or_words.iter())
+                    .all(|(w, or_w)| check_word_sanity(*w, *or_w))
+                {
                     return Ok(None);
                 }
-                if !suffix.iter().zip(or_suffix.iter()).all(|(b, or_b)| *b == 0 || *b == *or_b) {
+                if !suffix
+                    .iter()
+                    .zip(or_suffix.iter())
+                    .all(|(b, or_b)| *b == 0 || *b == *or_b)
+                {
                     return Ok(None);
                 }
             }

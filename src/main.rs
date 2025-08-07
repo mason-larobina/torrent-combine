@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use log::error;
 use rayon::prelude::*;
@@ -52,7 +52,10 @@ fn main() -> io::Result<()> {
     log::info!("Processing root directory: {:?}", args.root_dir);
 
     if let Some(num_threads) = args.num_threads {
-        rayon::ThreadPoolBuilder::new().num_threads(num_threads).build_global().unwrap();
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(num_threads)
+            .build_global()
+            .unwrap();
     }
 
     let files = collect_large_files(&args.root_dir)?;
@@ -93,7 +96,8 @@ fn main() -> io::Result<()> {
                 Ok(stats) => {
                     let processed_count =
                         groups_processed_cloned.fetch_add(1, Ordering::SeqCst) + 1;
-                    let percentage_complete = (processed_count as f64 / total_groups as f64) * 100.0;
+                    let percentage_complete =
+                        (processed_count as f64 / total_groups as f64) * 100.0;
 
                     match stats.status {
                         merger::GroupStatus::Merged => {
